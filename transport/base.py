@@ -3,7 +3,7 @@ import json
 import subprocess
 import multiprocessing
 import logging # allows you to track events that occur while your program is running
-import socket
+# import socket
 
 logger = logging.getLogger(__name__)
 
