@@ -1,11 +1,23 @@
 import os
 import socket
+from multiprocessing import reduction
+import pickle
 
 from .base import BaseTransport
 
 class UNIXSocketTransport(BaseTransport):
-    def __init__(self, socket_path='/tmp/exec-terminal-cmd', seperator='\r\n\r\n', listen_backlog=1):
-        super(UNIXSocketTransport, self).__init__()
+    """
+    Usage:
+    
+    cmd = 'ls -al'
+    
+    transport = UNIXSocketTransport()
+    
+    # returns ProcessResult instance.
+    result = transport.run_cmd(cmd)
+    """
+    def __init__(self, socket_path='/tmp/exec-terminal-cmd', seperator='\r\n\r\n', listen_backlog=5, **kwargs):
+        super(UNIXSocketTransport, self).__init__(**kwargs)
 
         self.socket_path = socket_path
         self.seperator = seperator
@@ -51,6 +63,12 @@ class UNIXSocketTransport(BaseTransport):
     def server_accept(self, connection):
         return connection.accept()
 
+    def server_deserialize_connection(self, connection):
+        return reduction.rebuild_socket(*connection[0][1]), connection[1]
+
+    def server_serialize_connection(self, connection):
+        return reduction.reduce_socket(connection[0]), connection[1]
+    
     def client_get_connection(self):
         clientsocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
