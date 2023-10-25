@@ -16,11 +16,11 @@ class UNIXSocketTransport(BaseTransport):
     # returns ProcessResult instance.
     result = transport.run_cmd(cmd)
     """
-    def __init__(self, socket_path='/tmp/exec-terminal-cmd', seperator='\r\n\r\n', listen_backlog=5, **kwargs):
+    def __init__(self, socket_path='/tmp/exec-terminal-cmd', listen_backlog=5, **kwargs):
         super(UNIXSocketTransport, self).__init__(**kwargs)
 
         self.socket_path = socket_path
-        self.seperator = seperator
+        # self.seperator = seperator
         self.listen_backlog = listen_backlog
 
     def server_get_connection(self):
@@ -39,14 +39,16 @@ class UNIXSocketTransport(BaseTransport):
     def server_receive(self, connection):
         clientsocket, address = connection
 
-        data = ''
+        data = []
 
-        while self.seperator not in data:
-            new_data = clientsocket.recv(1024)
+        while True:
+            new_data = clientsocket.recv(4096)
+            if new_data:
+                data.append(new_data)
+            else:
+                break
 
-            data += new_data
-
-        data = data.split(self.seperator, 1)[0]
+        data = ''.join(data)
 
         return data
 
@@ -55,6 +57,8 @@ class UNIXSocketTransport(BaseTransport):
 
         clientsocket.sendall(data)
 
+    def server_close(self, connection):
+        clientsocket, address = connection
         try:
             clientsocket.close()
         except:
@@ -77,7 +81,7 @@ class UNIXSocketTransport(BaseTransport):
         return clientsocket
 
     def client_send(self, connection, command_string):
-        connection.sendall(command_string+self.seperator)
+        connection.sendall(command_string+self.SEPERATOR)
 
     def client_receive(self, connection):
         data = []
@@ -91,10 +95,10 @@ class UNIXSocketTransport(BaseTransport):
                 break
 
         data = ''.join(data)
+        return data
 
+    def client_close(self, connection):
         try:
-            clientsocket.close()
+            connection.close()
         except:
             pass
-
-        return data

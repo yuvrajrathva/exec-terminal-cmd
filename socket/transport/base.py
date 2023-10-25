@@ -17,6 +17,49 @@ class ProcessResult(collections.namedtuple('ProcessResult', ['command_string', '
     def to_json(self, *args, **kwargs):
         return json.dumps(self._asdict(), *args, **kwargs)
 
+class PopenProxy(object):
+    returncode = None
+
+    def __init__(self, transport, args):
+        self._transport = transport
+        self._args = args
+
+        self.connection = self._transport.client_get_connection()
+
+        self._transport.client_send(self.connection, args)
+
+    def communicate(self, input=None):
+        if self.returncode is not None:
+            raise Exception('Already Returned')
+
+        input = input or ''
+
+        self._transport.client_send(self.connection, input)
+
+        data = self._transport.client_receive(self.connection)
+
+        # check for seperator, if present set self.returncode
+        data, returncode = data.split(self._transport.SEPERATOR, 1)
+
+        if returncode:
+            self.returncode = int(returncode)
+            self._transport.client_close(self.connection)
+
+        stdout = []
+        stderr = []
+
+        for stdoutline in data.split(self._transport.STDOUT_PREFIX):
+            stdout_split = stdoutline.split(self._transport.STDERR_PREFIX)
+
+            stdout.append(stdout_split[0])
+
+            stderr.extend(stdout_split[1:])
+
+        stdout = ''.join(stdout)
+        stderr = ''.join(stderr)
+
+        return stdout, stderr
+    
 def worker(self, connection):
     #logging.debug('worker: %s' % connection)
     return self.server_handle_client(connection)
@@ -26,23 +69,26 @@ class BaseTransport(object):
     Usage:
     providing functionality common to all transports.
     """
+    SEPERATOR = '\r\n\r\n'
+    STDOUT_PREFIX = '0:'
+    STDERR_PREFIX = '1:'
 
     def __init__(self, pool_size=10):
         self.pool_size = pool_size
 
-    def server_run_process(self, command_string):
-        logger.debug('Executing: %s' % command_string)
+    # def server_run_process(self, command_string):
+    #     logger.debug('Executing: %s' % command_string)
 
-        process = subprocess.Popen(
-            command_string,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=True,
-            close_fds=True
-        )
-        process_stdout, process_stderr = process.communicate()
+    #     process = subprocess.Popen(
+    #         command_string,
+    #         stdout=subprocess.PIPE,
+    #         stderr=subprocess.PIPE,
+    #         shell=True,
+    #         close_fds=True
+    #     )
+    #     process_stdout, process_stderr = process.communicate()
 
-        return process, process_stdout, process_stderr
+    #     return process, process_stdout, process_stderr
 
     def server_get_connection(self):
         pass
@@ -53,26 +99,46 @@ class BaseTransport(object):
     def server_send(self, connection, data):
         pass
 
+    def server_send_returncode(self, connection, data):
+        pass
+
+    def server_send_stdout_stderr(self, connection, stdout, stderr):
+        self.server_send(connection, self.STDOUT_PREFIX+stdout)
+        self.server_send(connection, self.STDERR_PREFIX+stderr)
+
+    def server_send_returncode(self, connection, returncode):
+        self.server_send(connection, self.SEPERATOR+str(returncode))
+
+    def server_split_data(self, data):
+        return data.split(self.SEPERATOR, 1)
+    
     def server_handle_client(self, connection):
         logging.debug('server_handle_client %s' % connection)
         connection = self.server_deserialize_connection(connection)
         logging.debug('deserialized connection: %s' % connection)
 
-        command_string = self.server_receive(connection)
+        command_string, remainder = self.server_split_data(self.server_receive(connection))
         logging.debug('received command string: %s' % command_string)
 
-        process, process_stdout, process_stderr = self.server_run_process(command_string)
-
-        ret_data = ProcessResult(
+        process = subprocess.Popen(
             command_string,
-            process.returncode,
-            process_stdout,
-            process_stderr,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=True,
+            close_fds=True
         )
 
-        ret_data = ret_data.to_json()
+        while process.returncode is None:
+            process_input, remainder = self.server_split_data(remainder+self.server_receive(connection))
+            process_input = process_input or None
 
-        self.server_send(connection, ret_data)
+            process_stdout, process_stderr = process.communicate(input=process_input)
+
+            self.server_send_stdout_stderr(connection, process_stdout, process_stderr)
+
+        self.server_send_returncode(connection, process.returncode)
+
+        self.server_close(connection)
 
     def server_accept(self, connection):
         pass
@@ -111,14 +177,29 @@ class BaseTransport(object):
     def client_receive(self, connection):
         pass
 
+    def client_close(self, connection):
+        pass
+
     def run_cmd(self, command_string):
-        connection = self.client_get_connection()
+        process = self.Popen(command_string)
 
-        self.client_send(connection, command_string)
+        stdout = ''
+        stderr = ''
 
-        data = self.client_receive(connection)
+        while process.returncode is None:
+            data = process.communicate()
+            stdout += data[0]
+            stderr += data[1]
 
-        data = json.loads(data)
+        result = ProcessResult(
+            command_string,
+            process.returncode,
+            stdout,
+            stderr,
+        )
 
-        return ProcessResult(**data)
+        return result
+
+    def Popen(self, args):
+        return PopenProxy(self, args)
     
