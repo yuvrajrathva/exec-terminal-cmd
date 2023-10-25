@@ -1,7 +1,7 @@
 import mock  # library for testing
 import unittest  # a unit testing framework
 
-from errand_boy.transports import base, unixsocket
+from socket.transport import base, unixsocket
 
 class UNIXSocketTransportClientTestCase(unittest.TestCase):
     def test(self):
@@ -13,7 +13,6 @@ class UNIXSocketTransportClientTestCase(unittest.TestCase):
             cmd = 'ls -al'
             
             expected_result = base.ProcessResult(
-                VERSION=errand_boy.__version__,
                 command_string=cmd,
                 returncode=0,
                 stdout='',
@@ -29,7 +28,7 @@ class UNIXSocketTransportClientTestCase(unittest.TestCase):
             result = transport.run_cmd(cmd)
         
         self.assertEqual(clientsocket.connect.call_count, 1)
-        self.assertEqual(clientsocket.connect.call_args_list[0][0][0], '/tmp/errand-boy')
+        self.assertEqual(clientsocket.connect.call_args_list[0][0][0], '/tmp/exec-terminal-cmd')
         
         self.assertEqual(clientsocket.sendall.call_count, 1)
         self.assertEqual(clientsocket.sendall.call_args_list[0][0][0], cmd+'\r\n\r\n')
@@ -57,7 +56,6 @@ class UNIXSocketTransportServerTestCase(unittest.TestCase):
             subprocess.Popen.return_value = process
             
             expected_result = base.ProcessResult(
-                VERSION=errand_boy.__version__,
                 command_string=cmd,
                 returncode=process.returncode,
                 stdout=stdout,
@@ -76,7 +74,7 @@ class UNIXSocketTransportServerTestCase(unittest.TestCase):
             transport.run_server(max_accepts=1)
         
         self.assertEqual(serversocket.bind.call_count, 1)
-        self.assertEqual(serversocket.bind.call_args_list[0][0][0], '/tmp/errand-boy')
+        self.assertEqual(serversocket.bind.call_args_list[0][0][0], '/tmp/exec-terminal-cmd')
         
         self.assertEqual(serversocket.listen.call_count, 1)
         self.assertEqual(serversocket.listen.call_args_list[0][0][0], 1)
