@@ -7,10 +7,15 @@ def main(argv):
     transport = UNIXSocketTransport()
 
 
-    if argv[1] == 'server': # sys.argv is a list in Python, which contains the command-line arguments passed to the script.
+    if len(argv) == 1: # sys.argv is a list in Python, which contains the command-line arguments passed to the script.
         transport.run_server() #start a Unix socket server
     else:
-        print (transport.run_cmd(' '.join(argv[1:])).to_json(indent=4)) #run a command on the server
+        process, stdout, stderr = transport.run_cmd(' '.join(argv[1:]))
+
+        sys.stdout.write(stdout)
+        sys.stderr.write(stderr)
+
+        sys.exit(process.returncode)
 
 if __name__ == '__main__':
     main(sys.argv)

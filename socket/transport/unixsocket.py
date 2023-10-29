@@ -2,6 +2,7 @@ import os
 import socket
 from multiprocessing import reduction
 import pickle
+import errno
 
 from .base import BaseTransport
 
@@ -13,9 +14,12 @@ class UNIXSocketTransport(BaseTransport):
     
     transport = UNIXSocketTransport()
     
-    # returns ProcessResult instance.
-    result = transport.run_cmd(cmd)
+    process, stdout, stderr = transport.run_cmd('ls -al')
     """
+    SEPERATOR = '\r\n\r\n'
+    STDOUT_PREFIX = '0:'
+    STDERR_PREFIX = '1:'
+
     def __init__(self, socket_path='/tmp/exec-terminal-cmd', listen_backlog=5, **kwargs):
         super(UNIXSocketTransport, self).__init__(**kwargs)
 
@@ -36,19 +40,14 @@ class UNIXSocketTransport(BaseTransport):
 
         return serversocket
 
-    def server_receive(self, connection):
+    def server_recv(self, connection):
         clientsocket, address = connection
 
-        data = []
+        data = ''
 
-        while True:
+        while data.count(self.SEPERATOR) < 2:
             new_data = clientsocket.recv(4096)
-            if new_data:
-                data.append(new_data)
-            else:
-                break
-
-        data = ''.join(data)
+            data += new_data
 
         return data
 
@@ -80,21 +79,16 @@ class UNIXSocketTransport(BaseTransport):
 
         return clientsocket
 
-    def client_send(self, connection, command_string):
-        connection.sendall(command_string+self.SEPERATOR)
+    def client_send(self, connection, data):
+        connection.sendall(data+self.SEPERATOR)
 
-    def client_receive(self, connection):
-        data = []
+    def client_recv(self, connection):
+        data = ''
 
-        while True:
+        while data.count(self.SEPERATOR) < 2:
             new_data = connection.recv(4096)
+            data += new_data
 
-            if new_data:
-                data.append(new_data)
-            else:
-                break
-
-        data = ''.join(data)
         return data
 
     def client_close(self, connection):
